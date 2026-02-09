@@ -6,7 +6,7 @@ st.set_page_config(page_title="Generador de Ideas", page_icon="💡")
 st.title("💡 Asistente de Ideas de Proyectos")
 
 #pegar aca la clave api de google ia studio
-API_KEY = "AIzaSyDlKSpknyjc8Y1K-FlDo7q3l0pd3DCStDg" 
+API_KEY = "AIzaSyCr5TS2pg3ST4laBRQhjzFH2yxotuV4_UQ" 
 
 
 # Configuración del cliente
@@ -40,6 +40,23 @@ REGLAS DE CONTENIDO:
 2. Si el input NO tiene sentido (ej: "hola", "clima"), el JSON debe ser: {"error": "Solo puedo generar ideas de código. Por favor ingresa una tecnología."}
 3. No incluyas bloques de código markdown (```json), solo el texto JSON crudo.
 """
+def generar_codigo(proyecto):
+    tecnologias = proyecto.get('tecnologias', ['General'])
+    prompt_codigo = f"""
+    Actúa como un experto programador senior.
+    Genera el código base fundamental para el siguiente proyecto:
+    
+    TÍTULO: {proyecto['titulo']}
+    DESCRIPCIÓN: {proyecto['descripcion']}
+    STACK: {', '.join(tecnologias)}
+    
+    Instrucciones:
+    1. Provee el código principal (ej: app.py, index.html).
+    2. Usa comentarios para explicar las partes clave.
+    """
+    respuesta = st.session_state.chat_session.send_message(prompt_codigo)
+    return respuesta.text
+
 
 
 #configuracion del modeo a usar 
@@ -58,6 +75,26 @@ if "client" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+    
+#verificar y mostrar mensajes anteriores en caso de que se tocara un boton
+if "current_ideas" in st.session_state: 
+    st.divider()
+    ideas = st.session_state.current_ideas
+    def dibujar_idea(datos):
+        with st.container(border=True):
+            st.subheader(datos["titulo"])
+            st.markdown(datos["descripcion"])
+            st.caption(f"🛠️ Stack: {', '.join(datos.get('tecnologias', []))}")
+        t1, t2, t3 = st.tabs(["🐣 Principiante", "🚀 Intermedio", "🔥 Avanzado"])
+        with t1: dibujar_idea(ideas["principiante"])
+        with t2: dibujar_idea(ideas["intermedio"])
+        with t3: dibujar_idea(ideas["avanzado"])
+
+if "codigo_generado" in st.session_state:
+    st.write("---")
+    st.success(f"👨‍💻 Código generado para: **{st.session_state.proyecto_actual}**")
+    with st.expander("📜 Ver Código Completo", expanded=True):
+        st.code(st.session_state.codigo_generado)
         
 #permitir que el usuario pueda escrb¡ibir
 if prompt := st.chat_input("Escribe una tecnología (ej: Java, SQL)..."):
@@ -80,13 +117,14 @@ if prompt := st.chat_input("Escribe una tecnología (ej: Java, SQL)..."):
         
          try: 
             
-            with st.spinner("pensando ideas"):
+            
                 ideas = json.loads(response.text)
                 if "error" in ideas:
                  st.warning(["error"])
                  st.session_state.messages.append({"role": "assistant", "content": ideas["error"]})
                 else:
                  tab1, tab2, tab3 = st.tabs(["🐣 Principiante", "🚀 Intermedio", "🔥 Avanzado"])
+                 st.session_state.current_ideas = ideas
                 with tab1:
                         with st.container(border=True):
                             st.subheader(ideas["principiante"]["titulo"])
@@ -116,24 +154,30 @@ with st.sidebar:
         st.session_state.chat_session = None # reinicia la sesion de gemini
         st.rerun() # recarga la pagina 
     
+    if "current_ideas" in st.session_state:
+        st.subheader("👨‍💻 Generar Código")
+        nivel_seleccionado = st.selectbox(
+            "Selecciona el proyecto:",
+            ["principiante","intermedio","avanzado"],
+            format_func = lambda x: x.capitalize()
+        )
+        
+    if st.button("✨ Crear Código", type="primary", use_container_width=True):
+            
+            # A) Buscamos los datos completos de la idea seleccionada
+            idea_elegida = st.session_state.current_ideas[nivel_seleccionado]
+            
+            with st.spinner(f"Programando {idea_elegida['titulo']}..."):
+                # B) Llamamos a la función
+                codigo = generar_codigo(idea_elegida)
+                
+                # C) Guardamos en memoria
+                st.session_state.codigo_generado = codigo
+                st.session_state.proyecto_actual = idea_elegida['titulo']
+                
+                # D) Recargamos para que aparezca en el centro
+                st.rerun()
     
 
 
 ##le pide a gemini codigo base para empezar el proyecto 
-def generar_codigo(proyecto):
-    prompt_codigo = f"""
-    Actúa como un experto programador senior.
-    Genera el código base fundamental para el siguiente proyecto:
-    
-    TÍTULO: {proyecto['titulo']}
-    DESCRIPCIÓN: {proyecto['descripcion']}
-    STACK: {', '.join(proyecto['tecnologias'])}
-    
-    Instrucciones:
-    1. Provee el código principal (ej: app.py, index.html, script.js según corresponda).
-    2. Usa comentarios para explicar las partes clave.
-    3. Si requiere instalación, indica los comandos brevemente al inicio.
-    """
-    respuesta = st.session_state.chat_session.send_message(prompt_codigo)
-    return respuesta 
-
